@@ -1,0 +1,24 @@
+{
+  "name": "node-shell",
+  "version": "1.0.0",
+  "description": "A shell writen in nodejs",
+  "main": "index.js",
+  "bin": "bin.js",
+  "scripts": {
+    "test": "node ./index.js"
+  },
+  "keywords": [
+    "node",
+    "js",
+    "shell"
+  ],
+  "pkg": {
+    "scripts": "commands/*.js"
+  },
+  "author": "zani",
+  "license": "ISC",
+  "dependencies": {
+    "colors": "^1.4.0",
+    "shell-quote": "^1.7.2"
+  }
+}
