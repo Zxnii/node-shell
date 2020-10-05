@@ -5,12 +5,18 @@ const main = () => {
         colors = require("colors"),
         os = require("os"),
         path = require("path"),
-        fs = require("fs")
+        fs = require("fs"),
+        readline = require("readline")
+    const commandHistory = []
+    let prompt = `${">".cyan} ${process.cwd().red} ${
+        `@ ${os.hostname()}`.magenta
+    } ${"$ →".cyan} `
 
     let currentlyRunning
 
     const commands = {
         dir: args => {
+            if (!args[0]) args[0] = ""
             if (path.isAbsolute(args[0])) {
                 const fullPath = args[0]
                 if (fs.statSync(fullPath).isDirectory()) {
@@ -83,40 +89,75 @@ const main = () => {
                 }
             }
         },
-        exit: () => {
-            process.exit(0)
+        exit: args => {
+            if (args[0]) process.exit(args[0])
+            else process.exit(commandHistory[commandHistory.length - 1].code)
         },
         cd: args => {
             if (path.isAbsolute(args[0])) {
                 const fullPath = args[0]
+                if (!fs.existsSync(fullPath)) {
+                    process.stdout.write(
+                        `Could not find the directory specified (${fullPath}).\n`
+                            .red
+                    )
+                    return
+                }
                 if (fs.statSync(fullPath).isDirectory()) {
                     process.chdir(fullPath)
                 }
             } else {
                 const fullPath = path.join(process.cwd(), args[0])
+                if (!fs.existsSync(fullPath)) {
+                    process.stdout.write(
+                        `Could not find the directory specified (${fullPath}).\n`
+                            .red
+                    )
+                    return
+                }
                 if (fs.statSync(fullPath).isDirectory()) {
                     process.chdir(fullPath)
                 }
             }
+        },
+        cls: () => {
+            process.stdout.write("\u001b[2J\u001b[0;0H")
+        },
+        history: () => {
+            for (const item of commandHistory)
+                process.stdout.write(
+                    `Command: '${item.command}' args: '${item.args}'\n`
+                )
         },
     }
 
     if (os.platform != "win32") {
         delete commands.dir
+        delete commands.cls
     }
 
     const addListeners = () => {
-        process.stdin.on("data", chunk => {
-            processInput(chunk.toString())
+        process.stdin.setRawMode(true)
+        const reader = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+            prompt,
+        })
+        reader.on("line", line => {
+            processInput(line)
+        })
+        readline.emitKeypressEvents(process.stdin, reader)
+
+        process.stdin.on("keypress", (chr, key) => {
+            reader.setPrompt(prompt)
         })
     }
 
     const createPrompt = () => {
-        process.stdout.write(
-            `${">".cyan} ${process.cwd().red} ${`@ ${os.hostname()}`.magenta} ${
-                "$ →".cyan
-            } `
-        )
+        prompt = `${">".cyan} ${process.cwd().red} ${
+            `@ ${os.hostname()}`.magenta
+        } ${"$ →".cyan} `
+        process.stdout.write(prompt)
     }
 
     const processInput = input => {
@@ -136,20 +177,35 @@ const main = () => {
 
         let spawnCommand = ""
 
-        for (const entry of $path) {
-            if (os.platform() == "win32") {
-                if (fs.existsSync(path.join(entry, `${command}.exe`))) {
-                    spawnCommand = path.join(entry, `${command}.exe`)
-                    break
-                }
-                if (fs.existsSync(path.join(entry, `${command}.cmd`))) {
-                    spawnCommand = path.join(entry, `${command}.cmd`)
-                    break
-                }
-            } else {
-                if (fs.existsSync(path.join(entry, command))) {
-                    spawnCommand = path.join(entry, command)
-                    break
+        if (os.platform() == "win32") {
+            if (fs.existsSync(path.join(process.cwd(), `${command}.exe`))) {
+                spawnCommand = path.join(process.cwd(), `${command}.exe`)
+            }
+            if (fs.existsSync(path.join(process.cwd(), `${command}.cmd`))) {
+                spawnCommand = path.join(process.cwd(), `${command}.cmd`)
+            }
+        } else {
+            if (fs.existsSync(path.join(process.cwd(), command))) {
+                spawnCommand = path.join(process.cwd(), command)
+            }
+        }
+
+        if (spawnCommand == "") {
+            for (const entry of $path) {
+                if (os.platform() == "win32") {
+                    if (fs.existsSync(path.join(entry, `${command}.exe`))) {
+                        spawnCommand = path.join(entry, `${command}.exe`)
+                        break
+                    }
+                    if (fs.existsSync(path.join(entry, `${command}.cmd`))) {
+                        spawnCommand = path.join(entry, `${command}.cmd`)
+                        break
+                    }
+                } else {
+                    if (fs.existsSync(path.join(entry, command))) {
+                        spawnCommand = path.join(entry, command)
+                        break
+                    }
                 }
             }
         }
@@ -171,15 +227,21 @@ const main = () => {
                 createPrompt()
             })
             running.stdout.on("data", chunk => {
-                lastChunk = chunk
+                lastChunk = chunk.toString()
                 if (isRunning) {
+                    lastChunk = ""
                     process.stdout.write(chunk)
                 }
             })
-            running.on("exit", () => {
+            running.on("exit", code => {
                 isRunning = false
-                process.stdout.write(lastChunk)
+                process.stdout.write(`${lastChunk}`)
                 currentlyRunning = undefined
+                commandHistory.push({
+                    command,
+                    args,
+                    code,
+                })
                 createPrompt()
             })
         } catch (err) {
@@ -190,12 +252,22 @@ const main = () => {
                 )
             } else {
                 commands[command](args)
+                commandHistory.push({
+                    command,
+                    args,
+                    code: 0,
+                })
             }
             createPrompt()
         }
     }
 
     const setup = () => {
+        process.stdout.write(
+            `Node Shell version ${
+                require("./package.json").version.green
+            } running Node.js version ${process.version.green}\n\n`
+        )
         process.title = "Node Shell"
         addListeners()
         createPrompt()
