@@ -1,6 +1,6 @@
 {
   "name": "node-shell",
-  "version": "1.0.0",
+  "version": "v1.0.0",
   "description": "A shell writen in nodejs",
   "main": "index.js",
   "bin": "bin.js",
